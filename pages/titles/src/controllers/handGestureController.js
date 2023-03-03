@@ -2,6 +2,7 @@ import { prepareRunChecker } from "../../../../lib/shared/util.js"
 
 
 const { shouldRun: scrollShouldRun } = prepareRunChecker({ timerDelay: 200 })
+const { shouldRun: clickShouldRun } = prepareRunChecker({ timerDelay: 600 })
 
 export default class HandGestureController {
   #view
@@ -24,19 +25,25 @@ export default class HandGestureController {
   }
 
   #scrollPage(direction) {
-    const pixelsPerScroll = 400
+    const pixelsPerScroll = 100
+
+    const doc = document.documentElement
+
+    const totalScrollY = (doc.scrollHeight - doc.clientHeight)
 
     if (this.#lastDirection.direction === direction) {
       this.#lastDirection.y = (
         direction === 'scroll-down'
-          ? this.#lastDirection.y + pixelsPerScroll
-          : this.#lastDirection.y - pixelsPerScroll
+          ? this.#lastDirection.y >= totalScrollY
+            ? totalScrollY
+            : this.#lastDirection.y + pixelsPerScroll
+          : this.#lastDirection.y <= 0
+            ? 0
+            : this.#lastDirection.y - pixelsPerScroll
       )
     } else {
       this.#lastDirection.direction = direction
     }
-
-    console.log(this.#lastDirection)
 
     this.#view.scrollPage(this.#lastDirection.y)
   }
@@ -44,8 +51,17 @@ export default class HandGestureController {
   async #estimateHands() {
     try {
       const hands = await this.#service.estimateHands(this.#camera.video)
+      this.#view.clearCanvas()
+
+      if (hands?.length) this.#view.drawResults(hands)
+
       for await (const { event, x, y } of this.#service.detectGestures(hands)) {
-        console.log(event)
+        if (event === 'click') {
+          if (!clickShouldRun()) continue
+
+          this.#view.clickOnElement(x, y)
+          continue
+        }
 
         if (event.includes('scroll')) {
           if (!scrollShouldRun()) continue
@@ -54,7 +70,7 @@ export default class HandGestureController {
       }
 
     } catch (error) {
-      console.error('deu ruim');
+      console.error(error)
     }
   }
 
